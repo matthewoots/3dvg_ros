@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(3d_visibility_graph)
+project(visibility_graph)
 
 # Set target C++ standard and required compiler features
 set(CMAKE_CXX_STANDARD 14)

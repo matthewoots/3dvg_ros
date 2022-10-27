@@ -64,59 +64,63 @@ namespace visibility_graph
 
             struct global_map
             {
-                std::pair<Eigen::Vector3d, Eigen::Vector3d> min_max_bnd; // min and max xyz
                 std::pair<Eigen::Vector3d, Eigen::Vector3d> start_end; // start and end pair
                 vector<obstacle> obs; // obstacles
                 double inflation; // agent safety margin
                 Eigen::Affine3d t; // Transform from start and aligned
+                Eigen::Vector3d rpy;
             };
 
             visibility(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
             {
                 /** @brief ROS Params */
-                std::vector<double> obstacles_list, start_list, end_list, min_max_bnd_list;
+                std::vector<double> obstacles_list, start_list, end_list;
 
                 _nh.param<int>("map/polygon_vertices_size", polygon_vertices_size, -1);
+                _nh.param<string>("map/frame", frame, "");
 
                 _nh.getParam("planning/start", start_list);
                 _nh.getParam("planning/end", end_list);
-                assert(start_list.empty() || start_list.size() != 3);
-                assert(end_list.empty() || end_list.size() != 3);
+
+                assert(!start_list.empty() || ((int)start_list.size() == 3));
+                assert(!end_list.empty() || ((int)end_list.size() == 3));
                 
                 Eigen::Vector3d start = Eigen::Vector3d(start_list[0], start_list[1], start_list[2]);
                 Eigen::Vector3d end = Eigen::Vector3d(end_list[0], end_list[1], end_list[2]);
                 map.start_end = make_pair(start, end);
-
-                _nh.getParam("planning/min_max_bnd", min_max_bnd_list);
-                Eigen::Vector3d min_bnd = Eigen::Vector3d(min_max_bnd_list[0], min_max_bnd_list[2], min_max_bnd_list[4]);
-                Eigen::Vector3d max_bnd = Eigen::Vector3d(min_max_bnd_list[1], min_max_bnd_list[3], min_max_bnd_list[5]);
-                map.min_max_bnd = make_pair(min_bnd, max_bnd);
 
                 _nh.getParam("planning/obstacles", obstacles_list);
                 int obs_list_size = (int)obstacles_list.size();
                 // Assume each polygon is made up of 4 vertices
                 // 0-1, 2-3, 4-5, 6-7 since we need both x and y
                 // 8 element will be height
-                assert(obs_list_size % (polygon_vertices_size*2 + 1) != 0);
-                int obstacle_size = obs_list_size / (polygon_vertices_size + 1);
+                assert(obs_list_size % (polygon_vertices_size*2 + 1) == 0);
+                int obstacle_size = obs_list_size / (polygon_vertices_size*2 + 1);
                 for (int i = 0; i < obstacle_size; i++)
                 {
                     obstacle obs;
+                    vector<Eigen::Vector2d> v_tmp;
                     for (int j = 0; j < polygon_vertices_size; j++)
                     {
                         int x_idx = i*(polygon_vertices_size*2 + 1) + j*2+0;
                         int y_idx = i*(polygon_vertices_size*2 + 1) + j*2+1;
-                        obs.v.push_back(Eigen::Vector2d(
+                        v_tmp.push_back(Eigen::Vector2d(
                             obstacles_list[x_idx], obstacles_list[y_idx]));
+                        // std::cout << v_tmp[(int)v_tmp.size()-1].transpose() << ", ";
                     }
-                    
-                    obs.h = obstacles_list[(i+1)*(polygon_vertices_size + 1) - 1];
-                    obs.c = get_centroid_2d(obs.v);
+                    // std::cout << std::endl;
 
-                    map.obs.push_back(obs);
+                    obs.c = get_centroid_2d(v_tmp);
+
+                    // enforces outer boundary vertices are listed ccw and
+                    // holes listed cw
+                    graham_scan(v_tmp, obs.c, "cw", obs.v);
+                    obs.h = obstacles_list[(i+1)*(polygon_vertices_size*2 + 1) - 1];
+                    
+                    map.obs.push_back(obs);                    
                 }
 
-                // _nh.param<double>("planning/sub_runtime_error", rrt_param.r_e.first, -1.0);
+                _nh.param<double>("planning/protected_zone", protected_zone, -1.0);
 
                 /** @brief For debug */
                 obstacle_pub = _nh.advertise<
@@ -129,17 +133,28 @@ namespace visibility_graph
                 visibility_graph_pub = _nh.advertise<
                     visualization_msgs::Marker>("/visbility", 10);
 
-                /** @brief Timer for the rrt search and agent */
+                /** @brief Timer functions */
                 timer = _nh.createTimer(ros::Duration(0.1), 
                     &visibility::main_timer, this, false, false);
+                visual_timer = _nh.createTimer(ros::Duration(0.1), 
+                    &visibility::visualization_timer, this, false, false);
 
                 /** @brief Choose a color for the trajectory using random values **/
                 std::random_device dev;
                 std:mt19937 generator(dev());
                 std::uniform_real_distribution<double> dis(0.0, 1.0);
-                color = Eigen::Vector4d(dis(generator), dis(generator), dis(generator), 0.5);
+                // We will generate colors for 
+                // 1. start and end (points)
+                // 2. obstacles edges (line list)
+                // 3. 2d plane polygons (line list)
+                // 4. visibility graph (line list and points)
+                // 5. shortest path (line list)
+                int color_count = 5;
+                for (int i = 0; i < color_count; i++)
+                    color_range.push_back(Eigen::Vector4d(dis(generator), dis(generator), dis(generator), 0.5));
 
                 timer.start();
+                visual_timer.start();
             }
 
             ~visibility(){}
@@ -163,11 +178,26 @@ namespace visibility_graph
 
             int polygon_vertices_size;
 
-            Eigen::Vector4d color;
+            std::mutex main_mutex;
+
+            vector<Eigen::Vector4d> color_range;
+            vector<Eigen::Vector3d> debug_point_vertices;
+            std::pair<Eigen::Vector2d, Eigen::Vector2d> boundary;
+            vector<Eigen::Vector3d> shortest_path_3d;
+            vector<obstacle> rot_polygons;
+            double protected_zone;
+            string frame;
+
+            bool found = false;
 
             /** @brief Callbacks, mainly for loading pcl and commands **/
             void command_callback(
                 const geometry_msgs::PointConstPtr& msg);
+
+            int sum_of_range(int s, int e);
+
+            vector<Eigen::Vector2d> gift_wrapping(
+                vector<Eigen::Vector2d> points_in);
 
             /** @brief graham_scan, sorts the polygon clockwise https://stackoverflow.com/a/57454410
              * Holes listed in clockwise
@@ -176,7 +206,25 @@ namespace visibility_graph
             **/
             void graham_scan(
                 vector<Eigen::Vector2d> points_in, Eigen::Vector2d centroid,
-                vector<Eigen::Vector2d> &points_out);
+                string dir, vector<Eigen::Vector2d> &points_out);
+
+            bool find_nearest_distance_2d_polygons_and_fuse(
+                obstacle o1, obstacle o2, double safety_radius,
+                std::pair<Eigen::Vector2d, Eigen::Vector2d> &points_out, 
+                double &nearest_distance, obstacle &o3);
+
+            bool closest_points_between_lines(
+                Eigen::Vector2d a0, Eigen::Vector2d a1,
+                Eigen::Vector2d b0, Eigen::Vector2d b1,
+                std::pair<Eigen::Vector2d, Eigen::Vector2d> &c_p,
+                double &distance);
+            
+            void set_2d_min_max_boundary(
+                vector<obstacle> obstacles, std::pair<Eigen::Vector2d, Eigen::Vector2d> start_end, 
+                std::pair<Eigen::Vector2d, Eigen::Vector2d> &boundary);
+
+            vector<Eigen::Vector2d> boundary_to_polygon_vertices(
+                std::pair<Eigen::Vector2d, Eigen::Vector2d> min_max, string dir);
             
             /** @brief get_line_plane_intersection
              * https://stackoverflow.com/a/71407596
@@ -209,49 +257,32 @@ namespace visibility_graph
             Eigen::Vector2d get_centroid_2d(
                 vector<Eigen::Vector2d> vect);
 
+            Eigen::Matrix3d get_rotation(
+                Eigen::Vector3d rpy, std::string frame);
+
             /** @brief get_affine_transform
              * @param pos Translational position
              * @param rpy Euler angles
             **/
             Eigen::Affine3d get_affine_transform(
-                Eigen::Vector3d pos, Eigen::Vector3d rpy, string frame);
+                Eigen::Vector3d pos, Eigen::Vector3d rpy, 
+                std::string frame);
 
             // Using https://karlobermeyer.github.io/VisiLibity1/doxygen_html/annotated.html
             void get_visibility_path();
 
+            visualization_msgs::Marker visualize_line_list(
+                vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> vect_vert, 
+                Eigen::Vector4d color, double scale, int index, double transparency);
+            
+            visualization_msgs::Marker visualize_points(
+                vector<Eigen::Vector3d> points_vect, 
+                Eigen::Vector4d color, double scale, int index);
+
             /** @brief Timers for searching and agent movement **/
-            ros::Timer timer;
+            ros::Timer timer, visual_timer;
             void main_timer(const ros::TimerEvent &);
-
-            void visualize_points(double scale_small, double scale_big)
-            {
-                visualization_msgs::Marker sphere_points, search;
-                sphere_points.header.frame_id = search.header.frame_id = "world";
-                sphere_points.header.stamp = search.header.stamp = ros::Time::now();
-                sphere_points.type = visualization_msgs::Marker::SPHERE;
-                search.type = visualization_msgs::Marker::SPHERE;
-                sphere_points.action = search.action = visualization_msgs::Marker::ADD;
-
-                sphere_points.id = 0;
-                search.id = 1;
-
-                sphere_points.pose.orientation.w = search.pose.orientation.w = 1.0;
-                sphere_points.color.r = search.color.g = color(0);
-                sphere_points.color.g = search.color.r = color(1);
-                sphere_points.color.b = search.color.b = color(2);
-
-                sphere_points.color.a = color(3);
-                search.color.a = 0.1;
-
-                sphere_points.scale.x = scale_small;
-                sphere_points.scale.y = scale_small;
-                sphere_points.scale.z = scale_small;
-
-                search.scale.x = scale_big;
-                search.scale.y = scale_big;
-                search.scale.z = scale_big;
-
-            }
+            void visualization_timer(const ros::TimerEvent &);            
             
     };
 }
