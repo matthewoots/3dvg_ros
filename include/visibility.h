@@ -55,6 +55,11 @@ namespace visibility_graph
     {
         public:
 
+            /** @brief Obstacle structure
+             * @param v Flattened vertices of the obstacle
+             * @param h Height that the obstacle is extruded to
+             * @param c Flattened centroid of the obstacle
+            **/
             struct obstacle
             {
                 vector<Eigen::Vector2d> v; // Base vertices
@@ -62,20 +67,27 @@ namespace visibility_graph
                 Eigen::Vector2d c; // Centroid
             };
 
+            /** @brief Global map structure
+             * @param start_end Start and end point pair (3D)
+             * @param obs Obstacles in the map
+             * @param inflation Safety margin that is used to expand the map
+             * @param t Transform and oriented to start-end vector
+             * @param rpy RPY that is recorded for the transform
+            **/
             struct global_map
             {
-                std::pair<Eigen::Vector3d, Eigen::Vector3d> start_end; // start and end pair
-                vector<obstacle> obs; // obstacles
-                double inflation; // agent safety margin
-                Eigen::Affine3d t; // Transform from start and aligned
-                Eigen::Vector3d rpy;
+                std::pair<Eigen::Vector3d, Eigen::Vector3d> start_end; // Start and end pair
+                vector<obstacle> obs; // Obstacles
+                double inflation; // Safety margin
+                Eigen::Affine3d t; // Transform and oriented to start-end vector
+                Eigen::Vector3d rpy; // RPY that is recorded for the transform
             };
 
             visibility(ros::NodeHandle &nodeHandle) : _nh(nodeHandle)
             {
-                /** @brief ROS Params */
                 std::vector<double> obstacles_list, start_list, end_list;
 
+                /** @brief Define ROS Params */
                 _nh.param<int>("map/polygon_vertices_size", polygon_vertices_size, -1);
                 _nh.param<string>("map/frame", frame, "");
 
@@ -122,14 +134,13 @@ namespace visibility_graph
 
                 _nh.param<double>("planning/protected_zone", protected_zone, -1.0);
 
-                /** @brief For debug */
+                /** @brief Publishers */
                 obstacle_pub = _nh.advertise<
                     visualization_msgs::Marker>("/obstacle", 10);
                 plane_polygon_pub = _nh.advertise<
                     visualization_msgs::Marker>("/plane_obstacles", 10);
                 start_end_pub = _nh.advertise<
                     visualization_msgs::Marker>("/start_end", 10);
-
                 visibility_graph_pub = _nh.advertise<
                     visualization_msgs::Marker>("/visbility", 10);
 
@@ -159,13 +170,6 @@ namespace visibility_graph
 
             ~visibility(){}
 
-            double constrain_to_pi(double x){
-                x = fmod(x + M_PI, 2 * M_PI);
-                if (x < 0)
-                    x += 2 * M_PI;
-                return x - M_PI;
-            }
-
         private:
 
             ros::NodeHandle _nh;
@@ -190,85 +194,157 @@ namespace visibility_graph
 
             bool found = false;
 
-            /** @brief Callbacks, mainly for loading pcl and commands **/
+            /** 
+             * @brief Command callback
+             * @param msg is in the geometry msgs type
+            **/
             void command_callback(
                 const geometry_msgs::PointConstPtr& msg);
 
+            /** 
+             * @brief Sum up from a range of int values
+             * @param s start of range
+             * @param e end of the range
+            **/
             int sum_of_range(int s, int e);
 
+            /** 
+             * @brief gift_wrapping algorithm
+             * @param points_in points that are passed into the algorithm
+             * @param (Return) Vector of points that are at the edge (convex hull)
+            **/
             vector<Eigen::Vector2d> gift_wrapping(
                 vector<Eigen::Vector2d> points_in);
 
-            /** @brief graham_scan, sorts the polygon clockwise https://stackoverflow.com/a/57454410
-             * Holes listed in clockwise
+            /** 
+             * @brief graham_scan, sorts the polygon clockwise https://stackoverflow.com/a/57454410
+             * Holes listed in clockwise or counterclockwise up to the direction
              * @param points_in Vector of points in
-             * @param points_out Vector of points out
+             * @param centroid Centroid of the flattened polygon
+             * @param dir Clockwise or counterclockwise direction sorting of points_out
+             * @param points_out (Return) Vector of points out
             **/
             void graham_scan(
                 vector<Eigen::Vector2d> points_in, Eigen::Vector2d centroid,
                 string dir, vector<Eigen::Vector2d> &points_out);
 
+            /** 
+             * @brief find_nearest_distance_2d_polygons_and_fuse
+             * Find out whether the nearest distance between the 2 polygons are within the threshold
+             * If it is within, the 2 polygons will be fused
+             * Uses a shortcut to derive the closest vertex pair, use the vector of the centroids and dot product
+             * @param o1 Obstacle 1 input
+             * @param o2 Obstacle 2 input
+             * @param safety_radius Safety radius that is acting as a threshold
+             * @param points_out (Return) Pair of points that are the closest 2 points between the 2 polygons
+             * (Only will return points out if the edges are not parallel)
+             * @param nearest_distance (Return) Nearest distance between the 2 polygons
+             * @param o3 (Return) The fused obstacle
+             * (Only will return points out if the edges are not parallel)
+             * @param (Return) A boolean representing whether there is a fused polygon
+            **/
             bool find_nearest_distance_2d_polygons_and_fuse(
                 obstacle o1, obstacle o2, double safety_radius,
                 std::pair<Eigen::Vector2d, Eigen::Vector2d> &points_out, 
                 double &nearest_distance, obstacle &o3);
 
+            /** 
+             * @brief closest_points_between_lines
+             * @param a0 First point of line 1
+             * @param a1 Second point of line 1
+             * @param b0 First point of line 2
+             * @param b1 Second point of line 2
+             * @param c_p The pair of points that are the closest points
+             * (Only will return points out if the edges are not parallel)
+             * @param distance Nearest distance between the 2 lines
+             * @param (Return) A boolean representing whether the line is not parallel
+            **/
             bool closest_points_between_lines(
                 Eigen::Vector2d a0, Eigen::Vector2d a1,
                 Eigen::Vector2d b0, Eigen::Vector2d b1,
                 std::pair<Eigen::Vector2d, Eigen::Vector2d> &c_p,
                 double &distance);
             
+            /** 
+             * @brief set_2d_min_max_boundary
+             * @param obstacles Vector of flattened obstacles
+             * @param start_end Start and end flattened points
+             * @param boundary (Return) The minimum and maximum of the inputs
+            **/
             void set_2d_min_max_boundary(
                 vector<obstacle> obstacles, std::pair<Eigen::Vector2d, Eigen::Vector2d> start_end, 
                 std::pair<Eigen::Vector2d, Eigen::Vector2d> &boundary);
 
+            /** 
+             * @brief boundary_to_polygon_vertices
+             * @param min_max The minimum and maximum of the inputs
+             * @param dir Pass the direction into the graham search to sort the vertices
+             * @param (Return) The AABB of the inputs represented in the 4 vertices
+            **/
             vector<Eigen::Vector2d> boundary_to_polygon_vertices(
                 std::pair<Eigen::Vector2d, Eigen::Vector2d> min_max, string dir);
             
-            /** @brief get_line_plane_intersection
-             * https://stackoverflow.com/a/71407596
-             * @param obs Obstacles will provide the line 
+            /** 
+             * @brief get_line_plane_intersection
+             * @param s_e Start and end pair
              * @param normal Normal of the plane
              * @param pop Point on plane
+             * @param p (Return) Point of intersection
             **/
             bool get_line_plane_intersection(
                 std::pair<Eigen::Vector3d, Eigen::Vector3d> s_e, 
                 Eigen::Vector3d normal, Eigen::Vector3d pop, Eigen::Vector3d &p);
 
-            /** @brief get_polygons_on_plane
+            /** 
+             * @brief get_polygons_on_plane
              * @param g_m Pass in the global map
              * @param normal Normal of the plane
+             * @param polygons (Return) Return the vector of flattened polygons
+             * @param v (Return) Return the vertices in 3d (not transformed)
             **/
             void get_polygons_on_plane(
                 global_map g_m, Eigen::Vector3d normal, 
                 vector<obstacle> &polygons, vector<Eigen::Vector3d> &v);
         
-            /** @brief get_expansion_of_obs
+            /** 
+             * @brief get_expansion_of_obs
              * @param obs Obstacle as input and output 
              * @param inflation Inflation amount
             **/
             void get_expanded_obs(
                 obstacle &obs, double inflation);
 
-            /** @brief get_centroid_2d
+            /** 
+             * @brief get_centroid_2d
              * @param vect Vector of points used to get centroid
+             * @param (Return) Centroid
             **/
             Eigen::Vector2d get_centroid_2d(
                 vector<Eigen::Vector2d> vect);
 
+            /** 
+             * @brief get_rotation
+             * @param rpy Euler angles in Eigen::Vector3d
+             * @param frame Coordinate frame used
+             * @param (Return) 3x3 Rotation matrix
+            **/
             Eigen::Matrix3d get_rotation(
                 Eigen::Vector3d rpy, std::string frame);
 
-            /** @brief get_affine_transform
+            /**
+             * @brief get_affine_transform
              * @param pos Translational position
              * @param rpy Euler angles
+             * @param frame Coordinate frame used
+             * @param (Return) Affine3d matrix
             **/
             Eigen::Affine3d get_affine_transform(
                 Eigen::Vector3d pos, Eigen::Vector3d rpy, 
                 std::string frame);
 
-            // Using https://karlobermeyer.github.io/VisiLibity1/doxygen_html/annotated.html
+            /**
+             * @brief Main loop
+            **/
             void get_visibility_path();
 
             visualization_msgs::Marker visualize_line_list(
