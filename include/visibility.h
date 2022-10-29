@@ -90,6 +90,9 @@ namespace visibility_graph
                 /** @brief Define ROS Params */
                 _nh.param<int>("map/polygon_vertices_size", polygon_vertices_size, -1);
                 _nh.param<string>("map/frame", frame, "");
+                _nh.param<double>("map/change_start_end_hz", 
+                    change_start_end_hz, -1.0);
+                _nh.getParam("map/height_limit", height_list);
 
                 _nh.getParam("planning/start", start_list);
                 _nh.getParam("planning/end", end_list);
@@ -151,7 +154,6 @@ namespace visibility_graph
                     &visibility::visualization_timer, this, false, false);
 
                 /** @brief Choose a color for the trajectory using random values **/
-                std::random_device dev;
                 std:mt19937 generator(dev());
                 std::uniform_real_distribution<double> dis(0.0, 1.0);
                 // We will generate colors for 
@@ -166,9 +168,19 @@ namespace visibility_graph
 
                 timer.start();
                 visual_timer.start();
+
+                switch_time = system_clock::now();
             }
 
             ~visibility(){}
+
+            double constrain_to_pi(double x)
+            {
+                x = fmod(x + M_PI, 2 * M_PI);
+                if (x < 0)
+                    x += 2 * M_PI;
+                return x - M_PI;
+            }
 
         private:
 
@@ -191,6 +203,11 @@ namespace visibility_graph
             vector<obstacle> rot_polygons;
             double protected_zone;
             string frame;
+
+            double change_start_end_hz;
+            time_point<std::chrono::system_clock> switch_time;
+            std::vector<double> height_list;
+            std::random_device dev;
 
             bool found = false;
 

@@ -59,6 +59,8 @@ namespace visibility_graph
                 l = i;
         }
         int p = l, q = -1;
+        int total_possible_attempts = pow(n,2);
+        int tries = 0;
         do
         {
             q = (p+1) % n;
@@ -73,8 +75,9 @@ namespace visibility_graph
             }
             next[p] = q;
             p = q;
+            tries++;
         }
-        while (p != l);
+        while (p != l && tries < total_possible_attempts);
 
         for (int i = 0; i < n; i++)
         {
@@ -589,7 +592,7 @@ namespace visibility_graph
         // z is yaw, and RHR indicates positive to be anticlockwise (y is pos)
         // Hence to counter yaw direction we need to make rpy.z() negative
         else if (strcmp(frame.c_str(), "enu") == 0)
-            orientated_rpy = Eigen::Vector3d(0.0, -rpy.x(), -rpy.z());
+            orientated_rpy = Eigen::Vector3d(0.0, rpy.x(), -rpy.z());
 
         // Get rotation matrix from RPY
         // https://stackoverflow.com/a/21414609
@@ -645,7 +648,7 @@ namespace visibility_graph
 
         else if (strcmp(frame.c_str(), "enu") == 0)
         {
-            double yaw = atan2(direction.x(), direction.y());
+            double yaw = atan2(direction.y(), direction.x());
             Eigen::Vector2d h_xy = Eigen::Vector2d(direction.x(), direction.y());
             double length_h_xy = h_xy.norm();
             double pitch = atan2(direction.z(), length_h_xy);
@@ -672,13 +675,12 @@ namespace visibility_graph
 
         rot_polygons.clear();
         get_polygons_on_plane(map, normal, rot_polygons, debug_point_vertices);
-        
-        for (int i = 0; i < (int)rot_polygons.size(); i++)
-            get_expanded_obs(rot_polygons[i], protected_zone);
 
         int count = 0, check_size = 1;
 
-        while (count != check_size)
+        int total_tries = sum_of_range(1, (int)rot_polygons.size()-1);
+        int tries = 0;
+        while (count != check_size && tries < pow(total_tries,1.5))
         {
             int poly_size = (int)rot_polygons.size();
             check_size = sum_of_range(1, poly_size-1);
@@ -695,10 +697,18 @@ namespace visibility_graph
                     std::pair<Eigen::Vector2d, Eigen::Vector2d> p_o;
                     double n_d;
                     obstacle o3;
-                    if (find_nearest_distance_2d_polygons_and_fuse(
-                        rot_polygons[i], rot_polygons[j], protected_zone, p_o, n_d, o3))
+                    if (rot_polygons[i].v.empty() || rot_polygons[j].v.empty())
                     {
+                        count++;
+                        continue;
+                    }
+
+                    if (find_nearest_distance_2d_polygons_and_fuse(
+                        rot_polygons[i], rot_polygons[j], protected_zone*1.5, p_o, n_d, o3))
+                    {
+                        /** @brief For debug purpose **/
                         // std::cout << "fuse" << std::endl;
+
                         vector<obstacle> tmp = rot_polygons;
                         rot_polygons.clear(); 
                         for (int k = 0; k < poly_size; k++)
@@ -715,9 +725,15 @@ namespace visibility_graph
                 if (early_break)
                     break;
             }
+
+            tries++;
             /** @brief For debug purpose **/
             // std::cout << count << "/" << check_size << "/" << poly_size << std::endl;
         }
+
+        for (int i = 0; i < (int)rot_polygons.size(); i++)
+            get_expanded_obs(rot_polygons[i], protected_zone);
+
         /** @brief For debug purpose **/
         // std::cout << "final_polygon_size = " << (int)rot_polygons.size() << std::endl;
 
@@ -743,25 +759,44 @@ namespace visibility_graph
         boundary_polygon.set_vertices(boundary_vertices);
 
         VisiLibity::Environment my_environment;
-        // Create the polygons for holes
-        for (obstacle &poly : rot_polygons)
+        my_environment.set_outer_boundary(boundary_polygon);
+
+        if (!rot_polygons.empty())
         {
-            VisiLibity::Polygon polygon;
-            std::vector<VisiLibity::Point> vis_vertices;
-            for (int i = 0; i < (int)poly.v.size(); i++)
+            // Create the polygons for holes
+            for (obstacle &poly : rot_polygons)
             {
-                VisiLibity::Point vis_vert(poly.v[i].x(), poly.v[i].y());
-                vis_vertices.push_back(vis_vert);
+                VisiLibity::Polygon polygon;
+                
+                if (!poly.v.empty())
+                {
+                    /** @brief For debug purpose **/
+                    // printf("poly_vert_size %d\n",(int)poly.v.size());
+
+                    for (int i = 0; i < (int)poly.v.size(); i++)
+                        polygon.push_back(
+                            VisiLibity::Point(poly.v[i].x(), poly.v[i].y()));
+
+                    polygon.eliminate_redundant_vertices(0.1);
+                    polygon.enforce_standard_form();
+
+                    /** @brief For debug purpose **/
+                    // printf("polygon_size %d, standard %s, simple %s\n", 
+                    //     polygon.n(), polygon.is_in_standard_form() ? "y" : "n",
+                    //     polygon.is_simple() ? "y" : "n");
+                    
+                    my_environment.add_hole(polygon);
+                    vector_polygon.push_back(polygon);
+                }
             }
-            polygon.set_vertices(vis_vertices);
-            my_environment.add_hole(polygon);
-            vector_polygon.push_back(polygon);
         }
+        else
+            printf("empty environment\n");
 
         VisiLibity::Polyline shortest_path_poly;
         VisiLibity::Point start_vis(rot_pair_2d.first.x(), rot_pair_2d.first.y());
         VisiLibity::Point end_vis(rot_pair_2d.second.x(), rot_pair_2d.second.y());
-        shortest_path_poly = my_environment.shortest_path(start_vis, end_vis, 0.1);
+        shortest_path_poly = my_environment.shortest_path(start_vis, end_vis, 0.2);
 
         shortest_path_3d.clear();
         for (int i = 0; i < shortest_path_poly.size(); i++)
@@ -854,11 +889,33 @@ namespace visibility_graph
     {
         std::lock_guard<std::mutex> lock(main_mutex);
 
+        double duration_switch = duration<double>(system_clock::now() - switch_time).count();
+        if (duration_switch > 1/change_start_end_hz)
+        {
+            std:mt19937 generator(dev());
+            std::uniform_real_distribution<double> dis_angle(-M_PI, M_PI);
+            std::uniform_real_distribution<double> dis_height(height_list[0], height_list[1]);
+            
+            double rand_angle = dis_angle(generator);
+            double opp_rand_angle = constrain_to_pi(rand_angle - M_PI);
+
+            double h = (map.start_end.first - map.start_end.second).norm() / 2;
+
+            map.start_end.first = Eigen::Vector3d(h * cos(rand_angle), 
+                h * sin(rand_angle), dis_height(generator));
+            map.start_end.second = Eigen::Vector3d(h * cos(opp_rand_angle), 
+                h * sin(opp_rand_angle), dis_height(generator));
+
+            std::cout << "start_position = " << KBLU << map.start_end.first.transpose() << KNRM << " " <<
+                    "end_position = " << KBLU << map.start_end.second.transpose() << KNRM << std::endl;
+
+            switch_time = system_clock::now();
+        }
+
         time_point<std::chrono::system_clock> start_time = system_clock::now();
         get_visibility_path();
         double search_time = duration<double>(system_clock::now() - start_time).count();
         std::cout << "get_visibility_path time (" << KBLU << search_time * 1000 << KNRM << "ms)" << std::endl;
-
         found = true;
     }
 
