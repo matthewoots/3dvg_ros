@@ -148,9 +148,9 @@ namespace visibility_graph
                     visualization_msgs::Marker>("/visbility", 10);
 
                 /** @brief Timer functions */
-                timer = _nh.createTimer(ros::Duration(0.1), 
+                timer = _nh.createTimer(ros::Duration(0.05), 
                     &visibility::main_timer, this, false, false);
-                visual_timer = _nh.createTimer(ros::Duration(0.1), 
+                visual_timer = _nh.createTimer(ros::Duration(0.05), 
                     &visibility::visualization_timer, this, false, false);
 
                 /** @brief Choose a color for the trajectory using random values **/
@@ -219,11 +219,11 @@ namespace visibility_graph
                 const geometry_msgs::PointConstPtr& msg);
 
             /** 
-             * @brief Sum up from a range of int values
+             * @brief Sum up from a range of unsigned int values
              * @param s start of range
              * @param e end of the range
             **/
-            int sum_of_range(int s, int e);
+            size_t sum_of_range(size_t s, size_t e);
 
             /** 
              * @brief gift_wrapping algorithm
@@ -252,7 +252,6 @@ namespace visibility_graph
              * Uses a shortcut to derive the closest vertex pair, use the vector of the centroids and dot product
              * @param o1 Obstacle 1 input
              * @param o2 Obstacle 2 input
-             * @param safety_radius Safety radius that is acting as a threshold
              * @param points_out (Return) Pair of points that are the closest 2 points between the 2 polygons
              * (Only will return points out if the edges are not parallel)
              * @param nearest_distance (Return) Nearest distance between the 2 polygons
@@ -261,7 +260,7 @@ namespace visibility_graph
              * @param (Return) A boolean representing whether there is a fused polygon
             **/
             bool find_nearest_distance_2d_polygons_and_fuse(
-                obstacle o1, obstacle o2, double safety_radius,
+                obstacle o1, obstacle o2,
                 std::pair<Eigen::Vector2d, Eigen::Vector2d> &points_out, 
                 double &nearest_distance, obstacle &o3);
 
@@ -363,6 +362,11 @@ namespace visibility_graph
              * @brief Main loop
             **/
             void get_visibility_path();
+
+            void check_and_fuse_obstacles();
+
+            void check_simple_obstacle_vertices(
+                obstacle obs, double eps, size_t &valid_vert_size);
 
             visualization_msgs::Marker visualize_line_list(
                 vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> vect_vert, 
