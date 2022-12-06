@@ -136,6 +136,10 @@ namespace visibility_graph
             for (int i = point_size-1; i >= 0; i--) 
                 points_out.push_back(points_in[point_angle_pair[i].second]);
         }
+
+        // for (int i = 0; i < point_size; i++)
+        //     printf("%lf %ld\n", point_angle_pair[i].first,
+        //         point_angle_pair[i].second); 
     }
 
     /** 
@@ -851,7 +855,7 @@ namespace visibility_graph
             }
         }
         visualization_msgs::Marker plane_visualize = visualize_line_list(
-            vect_vert, color_range[0], 0.15, 5, 0.5);
+            vect_vert, color_range[0], 0.25, 5, 0.5);
         obstacle_pub.publish(plane_visualize);
 
         assert(my_environment.is_valid(VISILIBITY_EPSILON));
@@ -1119,7 +1123,7 @@ namespace visibility_graph
         }
 
         obs_visualize = visualize_line_list(
-            vect_vert, color_range[1], 0.1, 2, 0.75);
+            vect_vert, color_range[1], 0.25, 2, 0.75);
         obstacle_pub.publish(obs_visualize);
 
         if (!found)
@@ -1163,7 +1167,7 @@ namespace visibility_graph
         debug_pair.push_back(vert_pair);
         
         visualization_msgs::Marker vector_visualize = 
-            visualize_line_list(debug_pair, color_range[3], 0.08, 4, 0.15);
+            visualize_line_list(debug_pair, color_range[3], 0.25, 4, 0.15);
         obstacle_pub.publish(vector_visualize);
 
 
@@ -1173,7 +1177,7 @@ namespace visibility_graph
                 make_pair(shortest_path_3d[i], shortest_path_3d[i+1]));
         
         visualization_msgs::Marker shortest_path_visualize = 
-            visualize_line_list(shortest_path_3d_pair, color_range[4], 0.1, 5, 0.5);
+            visualize_line_list(shortest_path_3d_pair, color_range[4], 0.25, 5, 0.5);
         visibility_graph_pub.publish(shortest_path_visualize);
 
     } 

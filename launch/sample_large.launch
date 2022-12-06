@@ -1,0 +1,41 @@
+<launch>
+<arg name="frame" value="enu"/>
+
+<node pkg="visibility_graph" type="visibility_graph_node" name="visibility_graph_node" output="screen">
+    
+    <param name="map/polygon_vertices_size" value="4"/>
+    <param name="map/frame" value="$(arg frame)"/>
+    <param name="map/change_start_end_hz" value="0.01"/>
+    <rosparam param="map/height_limit"> [1.00, 5.00] </rosparam>
+
+    <rosparam param="planning/start"> 
+        [-20, -20, 5] </rosparam>
+    <rosparam param="planning/end"> 
+        [20, 20, 5] </rosparam>
+
+    <!-- <rosparam if="$(eval frame == 'enu')" param="planning/obstacles"> 
+        [-20.0, 50.00, -75.00, 50.00, -75.00, 20.00, -20.00, 20.00, 50.00,
+        20.0, 70.00, -10.00, 70.00, -10.00, 0.00, -10.00, 0.00, 40.00,
+        -75.00, 0.00, -100.00, 0.00, -100.00, -70.00, -75.00, -70.00, 20.00,
+        -20.00, -25.00, 10.00, -25.00, 10.00, -75.00, -20.00, -75.00, 30.00,
+        30.00, 25.00, 50.00, 25.00, 50.00, -25.00, 30.00, -25.00, 50.00,
+        50.00, 0.00, 70.00, 0.00, 70.00, -70.00, 50.00, -60.00, 20.00,
+        90.0, -10.00, 110.00, -10.00, 110.00, 60.00, 90.0, 50.00, 30.00] 
+    </rosparam> -->
+
+    <rosparam if="$(eval frame == 'enu')" param="planning/obstacles"> 
+        [-15.042736375070589, 11.183766184073567,
+        15.042736375070589, 11.183766184073567,
+        -15.042736375070589, -11.183766184073566,
+        15.042736375070589, -11.183766184073566, 10] 
+    </rosparam>
+
+    <param name="planning/protected_zone" value="0.5"/>
+
+</node>
+
+<!-- Launch RViz with the demo configuration -->
+<node if="$(eval frame == 'enu')" name="rviz" pkg="rviz" type="rviz"
+    args="-d $(find visibility_graph)/rviz/vis_graph_enu_large.rviz"/>
+
+</launch>
