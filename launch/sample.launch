@@ -1,7 +1,7 @@
 <launch>
-<arg name="frame" value="enu"/>
+<arg name="frame" value="nwu"/>
 
-<node pkg="visibility_graph" type="visibility_graph_node" name="visibility_graph_node" output="screen">
+<node pkg="visibility_graph_ros" type="visibility_graph_ros_node" name="visibility_graph_node" output="screen">
     
     <param name="map/polygon_vertices_size" value="4"/>
     <param name="map/frame" value="$(arg frame)"/>
@@ -32,14 +32,14 @@
         6.00, 7.00, 6.00, 9.00, -2.00, 9.00, -2.00, 7.00, 4.00] 
     </rosparam>
 
-    <param name="planning/protected_zone" value="0.5"/>
+    <param name="planning/protected_zone" value="0.2"/>
 
 </node>
 
 <!-- Launch RViz with the demo configuration -->
 <node if="$(eval frame == 'nwu')" name="rviz" pkg="rviz" type="rviz"
-    args="-d $(find visibility_graph)/rviz/vis_graph_nwu.rviz"/>
+    args="-d $(find visibility_graph_ros)/rviz/vis_graph_nwu.rviz"/>
 <node if="$(eval frame == 'enu')" name="rviz" pkg="rviz" type="rviz"
-    args="-d $(find visibility_graph)/rviz/vis_graph_enu.rviz"/>
+    args="-d $(find visibility_graph_ros)/rviz/vis_graph_enu.rviz"/>
 
 </launch>

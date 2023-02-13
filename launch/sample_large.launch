@@ -1,7 +1,7 @@
 <launch>
 <arg name="frame" value="enu"/>
 
-<node pkg="visibility_graph" type="visibility_graph_node" name="visibility_graph_node" output="screen">
+<node pkg="visibility_graph_ros" type="visibility_graph_ros_node" name="visibility_graph_node" output="screen">
     
     <param name="map/polygon_vertices_size" value="4"/>
     <param name="map/frame" value="$(arg frame)"/>
@@ -36,6 +36,6 @@
 
 <!-- Launch RViz with the demo configuration -->
 <node if="$(eval frame == 'enu')" name="rviz" pkg="rviz" type="rviz"
-    args="-d $(find visibility_graph)/rviz/vis_graph_enu_large.rviz"/>
+    args="-d $(find visibility_graph_ros)/rviz/vis_graph_enu_large.rviz"/>
 
 </launch>

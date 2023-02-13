@@ -17,7 +17,7 @@
 */
 
 #include <ros/ros.h>
-#include "visibility.h"
+#include "visibility_ros.h"
 
 #define KNRM  "\033[0m"
 #define KRED  "\033[31m"
@@ -32,7 +32,7 @@ int main(int argc, char **argv)
 {
     ros::init(argc, argv, "visibility_node");
     ros::NodeHandle nh("~");
-    visibility_graph::visibility visibility(nh);
+    visibility_ros visibility_ros(nh);
     ros::MultiThreadedSpinner spinner(2);
     // spin() will not return until the node has been shutdown
     spinner.spin(); 

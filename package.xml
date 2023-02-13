@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>visibility_graph</name>
+  <name>visibility_graph_ros</name>
   <version>0.0.0</version>
-  <description>visibility_graph</description>
+  <description>visibility_graph_ros</description>
   <maintainer email="matthewoots@gmail.com">Matthew Woo</maintainer>
   <license>TODO</license>
 
