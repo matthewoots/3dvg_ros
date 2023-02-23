@@ -128,12 +128,13 @@ void visibility_ros::main_timer(const ros::TimerEvent &)
 
         switch_time = system_clock::now();
 
-        visibility vis_graph(map, frame);
+        visibility vis_graph(map, frame, 1);
 
         time_point<std::chrono::system_clock> start_time = system_clock::now();
         vis_graph.calculate_path();
         rot_polygons = vis_graph.get_rotated_poly();
         shortest_path_3d = vis_graph.get_path();
+        map = vis_graph.get_map();
         double search_time = duration<double>(system_clock::now() - start_time).count();
         std::cout << "get_visibility_path time (" << KBLU << search_time * 1000 << KNRM << "ms)" << std::endl;
         found = true;
@@ -172,8 +173,8 @@ void visibility_ros::visualization_timer(const ros::TimerEvent &)
         for (int i = 0; i < obs_vert_pair_size; i++)
         {
             std::pair<Eigen::Vector3d, Eigen::Vector3d> vert_pair;
-            vert_pair.first = Eigen::Vector3d(obs.v[i].x(), obs.v[i].y(), 0.0);
-            vert_pair.second = Eigen::Vector3d(obs.v[i].x(), obs.v[i].y(), obs.h);
+            vert_pair.first = Eigen::Vector3d(obs.v[i].x(), obs.v[i].y(), obs.h.first);
+            vert_pair.second = Eigen::Vector3d(obs.v[i].x(), obs.v[i].y(), obs.h.second);
             vect_vert.push_back(vert_pair);
 
             /** @brief For debug purpose **/
@@ -185,18 +186,18 @@ void visibility_ros::visualization_timer(const ros::TimerEvent &)
             std::pair<Eigen::Vector3d, Eigen::Vector3d> vert_pair;
             vert_pair.first = Eigen::Vector3d(
                 obs.v[i % obs_hori_pair_size].x(), 
-                obs.v[i % obs_hori_pair_size].y(), 0.0);
+                obs.v[i % obs_hori_pair_size].y(), obs.h.first);
             vert_pair.second = Eigen::Vector3d(
                 obs.v[(i+1) % obs_hori_pair_size].x(), 
-                obs.v[(i+1) % obs_hori_pair_size].y(), 0.0);
+                obs.v[(i+1) % obs_hori_pair_size].y(), obs.h.first);
             vect_vert.push_back(vert_pair);
 
             vert_pair.first = Eigen::Vector3d(
                 obs.v[i % obs_hori_pair_size].x(), 
-                obs.v[i % obs_hori_pair_size].y(), obs.h);
+                obs.v[i % obs_hori_pair_size].y(), obs.h.second);
             vert_pair.second = Eigen::Vector3d(
                 obs.v[(i+1) % obs_hori_pair_size].x(), 
-                obs.v[(i+1) % obs_hori_pair_size].y(), obs.h);
+                obs.v[(i+1) % obs_hori_pair_size].y(), obs.h.second);
             vect_vert.push_back(vert_pair);
         }
 

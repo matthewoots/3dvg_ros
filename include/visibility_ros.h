@@ -79,7 +79,7 @@ class visibility_ros
             // Assume each polygon is made up of 4 vertices
             // 0-1, 2-3, 4-5, 6-7 since we need both x and y
             // 8 element will be height
-            assert(obs_list_size % (polygon_vertices_size*2 + 1) == 0);
+            assert(obs_list_size % (polygon_vertices_size*2 + 2) == 0);
             int obstacle_size = obs_list_size / (polygon_vertices_size*2 + 1);
             for (int i = 0; i < obstacle_size; i++)
             {
@@ -87,8 +87,8 @@ class visibility_ros
                 vector<Eigen::Vector2d> v_tmp;
                 for (int j = 0; j < polygon_vertices_size; j++)
                 {
-                    int x_idx = i*(polygon_vertices_size*2 + 1) + j*2+0;
-                    int y_idx = i*(polygon_vertices_size*2 + 1) + j*2+1;
+                    int x_idx = i*(polygon_vertices_size*2 + 2) + j*2+0;
+                    int y_idx = i*(polygon_vertices_size*2 + 2) + j*2+1;
                     v_tmp.push_back(Eigen::Vector2d(
                         obstacles_list[x_idx], obstacles_list[y_idx]));
                     // std::cout << v_tmp[(int)v_tmp.size()-1].transpose() << ", ";
@@ -100,12 +100,16 @@ class visibility_ros
                 // enforces outer boundary vertices are listed ccw and
                 // holes listed cw
                 graham_scan(v_tmp, obs.c, "cw", obs.v);
-                obs.h = obstacles_list[(i+1)*(polygon_vertices_size*2 + 1) - 1];
+
+                obs.h = std::make_pair(obstacles_list[(i+1)*(polygon_vertices_size*2 + 2) - 1],
+                    obstacles_list[(i+1)*(polygon_vertices_size*2 + 2) - 2]);
                 
                 map.obs.push_back(obs);                    
             }
 
             _nh.param<double>("planning/protected_zone", protected_zone, -1.0);
+
+            map.inflation = protected_zone;
 
             /** @brief Publishers */
             obstacle_pub = _nh.advertise<
